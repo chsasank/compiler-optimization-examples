@@ -4,9 +4,10 @@ from collections import OrderedDict
 
 TERMINATORS = {"jmp", "br", "ret"}
 
+
 def form_blocks(body):
-    """Block formation algorthm. 
-    
+    """Block formation algorthm.
+
     Ref: https://en.wikipedia.org/wiki/Basic_block
     """
     blocks = []
@@ -31,16 +32,16 @@ def form_blocks(body):
     return blocks
 
 
-def block_map(blocks):
-    """Crate names for blocks"""
+def name_blocks(blocks):
+    """Crate names for blocks. Removes labels"""
     out = OrderedDict()
     for idx, block in enumerate(blocks):
         first_instr = block[0]
-        if 'label' in first_instr:
-            name = first_instr['label']
+        if "label" in first_instr:
+            name = first_instr["label"]
             block = block[1:]
         else:
-            name = f'b{len(out)}'
+            name = f"b{len(out)}"
 
         out[name] = block
 
@@ -52,9 +53,9 @@ def get_cfg(named_blocks):
     block_names = list(named_blocks.keys())
     for idx, (name, block) in enumerate(named_blocks.items()):
         last_instr = block[-1]
-        if last_instr['op'] in {'jmp', 'br'}:
-            successors[name] = last_instr['labels']
-        elif last_instr['op'] == 'ret':
+        if last_instr["op"] in {"jmp", "br"}:
+            successors[name] = last_instr["labels"]
+        elif last_instr["op"] == "ret":
             # just the next block
             successors[name] = []
         else:
@@ -70,12 +71,12 @@ def get_cfg(named_blocks):
 def graphviz(cfg, func_name):
     print(f"digraph {func_name} {{")
     for name in cfg.keys():
-        print(f'  {name};')
+        print(f"  {name};")
 
     for name, successors in cfg.items():
         for succ in successors:
-            print(f'  {name} -> {succ}')
-    print('}')
+            print(f"  {name} -> {succ}")
+    print("}")
 
 
 def mycfg():
@@ -83,12 +84,11 @@ def mycfg():
     cfg = {}
     for func in prog["functions"]:
         blocks = form_blocks(func["instrs"])
-        named_blocks = block_map(blocks)
+        named_blocks = name_blocks(blocks)
         cfg = get_cfg(named_blocks)
 
-        graphviz(cfg, func['name'])
-        
-        
+        graphviz(cfg, func["name"])
+
 
 if __name__ == "__main__":
     mycfg()
