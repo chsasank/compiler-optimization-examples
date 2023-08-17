@@ -1,7 +1,7 @@
 """Deadcode Elimination"""
 import json
 import sys
-from cfg import form_blocks, name_blocks
+from cfg import form_blocks
 
 
 def is_same_instrs(instrs_1, instrs_2):
@@ -10,38 +10,69 @@ def is_same_instrs(instrs_1, instrs_2):
     )
 
 
-def remove_unused_vars(block):
+def remove_unused_vars(func_instrs):
     """Delete any variable assignment instr which is not used by other instrs"""
 
-    def optimization_step(block):
+    def optimization_step(func_instrs):
         unsed_vars = set()
 
         # get all the variable declarations
-        for instr in block:
+        for instr in func_instrs:
             try:
                 unsed_vars.add(instr["dest"])
             except KeyError:
                 pass
 
         # remove used variables
-        for instr in block:
+        for instr in func_instrs:
             try:
                 unsed_vars -= set(instr["args"])
             except KeyError:
                 pass
 
         # now delete all the instructions which have their dest in this
-        block = [instr for instr in block if instr.get("dest") not in unsed_vars]
-        return block
+        func_instrs = [
+            instr for instr in func_instrs if instr.get("dest") not in unsed_vars
+        ]
+        return func_instrs
 
     # return optimization_step(block)
     while True:
-        optimized = optimization_step(block)
-        if optimized == block:
+        optimized = optimization_step(func_instrs)
+        if optimized == func_instrs:
             return optimized
         else:
             # redo the optimization
-            block = optimized
+            func_instrs = optimized
+
+
+def remove_unused_reassigned_vars(block):
+    """Remove assignments that are overwritten before use.
+    Local optimization.
+    """
+    # {var: instr} for all vars that are unused until now
+    last_def = {}
+    instrs_to_remove = []
+    for instr in block:
+        # remove used vars
+        try:
+            for arg in instr["args"]:
+                last_def.pop(arg, None)
+        except KeyError:
+            pass
+
+        try:
+            # remove previous instruction, if dest is unused before
+            if instr["dest"] in last_def:
+                instrs_to_remove.append(last_def[instr["dest"]])
+
+            # book keeping for current instr
+            last_def[instr["dest"]] = instr
+        except KeyError:
+            pass
+
+    block = [x for x in block if x not in instrs_to_remove]
+    return block
 
 
 def flatten_named_blocks(named_blocks):
@@ -56,12 +87,15 @@ def flatten_named_blocks(named_blocks):
 def run_tdce():
     prog = json.load(sys.stdin)
     for func in prog["functions"]:
-        blocks = form_blocks(func["instrs"])
-        named_blocks = name_blocks(blocks)
-        for block_name, block in named_blocks.items():
-            named_blocks[block_name] = remove_unused_vars(block)
+        # global optimization on tdce
+        func["instrs"] = remove_unused_vars(func["instrs"])
 
-        func["instrs"] = flatten_named_blocks(named_blocks)
+        optimized = []
+        # local optimization
+        for block in form_blocks(func["instrs"]):
+            optimized.extend(remove_unused_reassigned_vars(block))
+
+        func["instrs"] = optimized
 
     print(json.dumps(prog))
 
