@@ -50,28 +50,26 @@ def remove_unused_reassigned_vars(block):
     """Remove assignments that are overwritten before use.
     Local optimization.
     """
-    # {var: instr} for all vars that are unused until now
+    # {var: instr_idx} for all vars that are unused until now
     last_def = {}
-    instrs_to_remove = []
-    for instr in block:
+    instr_idxs_to_remove = []
+    for idx, instr in enumerate(block):
         # remove used vars
-        try:
+        if "args" in instr:
             for arg in instr["args"]:
                 last_def.pop(arg, None)
-        except KeyError:
-            pass
 
-        try:
+        if "dest" in instr:
             # remove previous instruction, if dest is unused before
             if instr["dest"] in last_def:
-                instrs_to_remove.append(last_def[instr["dest"]])
+                instr_idxs_to_remove.append(last_def[instr["dest"]])
 
             # book keeping for current instr
-            last_def[instr["dest"]] = instr
-        except KeyError:
-            pass
+            last_def[instr["dest"]] = idx
 
-    block = [x for x in block if x not in instrs_to_remove]
+    block = [
+        instr for idx, instr in enumerate(block) if idx not in instr_idxs_to_remove
+    ]
     return block
 
 
