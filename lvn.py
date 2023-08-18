@@ -4,7 +4,7 @@ import sys
 from cfg import form_blocks
 
 
-def lvn_pass(block):
+def lvn_pass(block, to_fold=False):
     """Do Local Value Numbering in a given block"""
     # value -> canonical var
     value_table = {}
@@ -27,7 +27,7 @@ def lvn_pass(block):
 
             # no transformations on const instructions
             optimized_block.append(instr)
-        elif 'args' in instr:
+        elif "args" in instr:
             # args need not be present in the current block
             # if so, create symbol for that
             for arg in instr["args"]:
@@ -37,19 +37,45 @@ def lvn_pass(block):
                     current_env[arg] = value
 
             if op in {"add", "mul"}:
-                # symbol for add: sorted because add is commutative
+                # symbol for add/mul: sorted because add is commutative
                 value = (op,) + tuple(sorted(current_env[x] for x in instr["args"]))
+
+                # see if we can do constant folding
+                if to_fold and value[1][0] == "const" and value[2][0] == "const":
+                    if op == "add":
+                        value = ("const", value[1][1] + value[2][1])
+                    elif op == "mul":
+                        value = ("const", value[1][1] * value[2][1])                    
 
                 if value not in value_table:
                     value_table[value] = instr["dest"]
 
-            # reconstruct the instr
-            transformed_instr = instr.copy()
-            for idx, arg in enumerate(transformed_instr["args"]):
-                if arg in current_env:
-                    transformed_instr["args"][idx] = value_table[current_env[arg]]
 
-            optimized_block.append(transformed_instr)
+                if value[0] == 'const':            
+                    transformed_instr = {
+                        "dest": instr['dest'],
+                        "op": "const",
+                        "type": "int",
+                        "value": value[1]
+                    }
+                    optimized_block.append(transformed_instr)
+                else:
+                    # reconstruct the instr
+                    transformed_instr = instr.copy()
+                    for idx, arg in enumerate(transformed_instr["args"]):
+                        if arg in current_env:
+                            transformed_instr["args"][idx] = value_table[current_env[arg]]
+
+                    optimized_block.append(transformed_instr)
+
+            else:
+                # reconstruct the instr
+                transformed_instr = instr.copy()
+                for idx, arg in enumerate(transformed_instr["args"]):
+                    if arg in current_env:
+                        transformed_instr["args"][idx] = value_table[current_env[arg]]
+
+                    optimized_block.append(transformed_instr)
 
             try:
                 current_env[instr["dest"]] = value
@@ -63,11 +89,12 @@ def lvn_pass(block):
 
 def run_lvn():
     prog = json.load(sys.stdin)
+    to_fold = '-f' in sys.argv
     for func in prog["functions"]:
         optimized = []
         # local optimization
         for block in form_blocks(func["instrs"]):
-            optimized.extend(lvn_pass(block))
+            optimized.extend(lvn_pass(block, to_fold))
 
         func["instrs"] = optimized
 
